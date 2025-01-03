@@ -16,6 +16,7 @@ return function ($router) {
     $router->post('/verify-payment', [PaymentController::class, 'verifyPayment']);
     $router->post('/log-payment-event', [PaymentController::class, 'logPaymentEvent']);
     $router->get('/success', [PaymentController::class, 'success']);
+    $router->get('/error', [PaymentController::class, 'error']);
 
     $router->get('/policy', [PagesController::class, 'policy']);
     $router->get('/download-receipt/html/{payment_id}', [ReceiptController::class, 'downloadHTML']);

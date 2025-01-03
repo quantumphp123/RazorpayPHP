@@ -190,7 +190,7 @@ class ReceiptController
                 'fgcolor' => array(0, 0, 0),
                 'bgcolor' => false
             );
-            $pdf->write2DBarcode($GLOBALS['config']->get('app')['url'] . '/success.php?payment_id=' . $paymentId, 'QRCODE,L', 15, $pdf->GetY() + 5, 30, 30, $style);
+            $pdf->write2DBarcode($GLOBALS['config']->get('app')['url'] . '/success?payment_id=' . $paymentId, 'QRCODE,L', 15, $pdf->GetY() + 5, 30, 30, $style);
 
             ob_end_clean();
             $pdf->Output('receipt_' . $paymentId . '.pdf', 'D');

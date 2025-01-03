@@ -55,15 +55,13 @@ $(document).ready(function () {
             method: 'POST',
             data: $(this).serialize(),
             success: function (response) {
-                console.log(response);
                 if (response.error) {
-                    console.log('Error in create_order');
                     handleError(response.error);
                     submitButton.prop('disabled', false);
                     hideLoadingOverlay(loadingOverlay);
                     return;
                 }
-                console.log('No error in create_order');
+
                 const options = {
                     key: response.key,
                     amount: response.amount,
@@ -72,7 +70,6 @@ $(document).ready(function () {
                     name: 'Quantum IT Innovation',
                     description: 'IT Services Payment',
                     handler: function (response) {
-                        console.log("handling verify payment");
                         verifyPayment(response, submitButton, loadingOverlay);
                     },
                     modal: {
@@ -130,6 +127,7 @@ $(document).ready(function () {
             country: $('#country').val(),
             amount: $('#amount').val(),
             currency: $('#currency').val(),
+            csrf_token: $('input[name="csrf_token"]').val(), // CSRF
             // Include payment method details from Razorpay response
             payment_method: response.method,
             card_network: response.card ? response.card.network : null,
@@ -219,26 +217,64 @@ $(document).ready(function () {
         overlay.remove();
     }
 
-    function handleError(message) {
-        const errorDiv = $('<div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4"></div>').text(message);
-        $('#payment-form').prepend(errorDiv);
-        setTimeout(() => errorDiv.fadeOut('slow', function () { $(this).remove(); }), 20000);
+    function handleError(message, data = null) {
+        // Prepare error data object
+        const errorData = {
+            error_code: data?.error_code || 'ERROR',
+            error_description: message,
+            details: {
+                order_id: data?.order_id,
+                amount: data?.amount,
+                currency: data?.currency,
+                timestamp: new Date().toLocaleString(),
+                ...data // Spread any additional data
+            }
+        };
 
-        logPaymentEvent('payment_error', {
-            error_message: message
+        // Clean up undefined/null values
+        Object.keys(errorData.details).forEach(key => {
+            if (errorData.details[key] === undefined || errorData.details[key] === null) {
+                delete errorData.details[key];
+            }
+        });
+
+        // Log the payment event and wait for the log ID
+        logPaymentEvent('payment_error', errorData).then(logId => {
+            // Create and show error message
+            const errorDiv = $('<div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4"></div>')
+                .text(message);
+
+            $('#payment-form').prepend(errorDiv);
+
+            $('html, body').animate({
+                scrollTop: errorDiv.offset().top - 20
+            }, 500);
+
+            setTimeout(() => {
+                errorDiv.fadeOut('slow', function () {
+                    $(this).remove();
+                });
+
+                // Redirect to error page with log ID
+                window.location.href = `/error?log_id=${logId}`;
+            }, 3000);
         });
     }
 
     function handlePaymentFailure(response) {
-        console.log('razorpay options error');
-        const errorMessage = `Payment failed: ${response.error.description} (Code: ${response.error.code})`;
-        handleError(errorMessage);
-
-        logPaymentEvent('payment_failed', {
+        const errorData = {
             error_code: response.error.code,
-            error_message: response.error.description,
-            order_id: response.error.metadata.order_id
-        });
+            error_description: response.error.description,
+            details: {
+                order_id: response.error.metadata.order_id,
+                amount: response.error.metadata.amount,
+                currency: response.error.metadata.currency,
+                timestamp: new Date().toLocaleString()
+            }
+        };
+
+        const errorMessage = `Payment failed: ${response.error.description} (Code: ${response.error.code})`;
+        handleError(errorMessage, errorData);
     }
 
     function logPaymentEvent(event_type, data) {
@@ -247,9 +283,10 @@ $(document).ready(function () {
             method: 'POST',
             data: {
                 event_type: event_type,
+                csrf_token: $('input[name="csrf_token"]').val(),
                 ...data
             }
-        });
+        }).then(response => response.log_id);;
     }
 
     function saveAddress() {

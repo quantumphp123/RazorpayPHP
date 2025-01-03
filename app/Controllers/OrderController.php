@@ -14,6 +14,13 @@ class OrderController
     public function create(): void
     {
         try {
+            global $session;
+
+            // Validate CSRF
+            if (!$session->validateCSRFToken($_POST['csrf_token'])) {
+                throw new Exception('Invalid CSRF token');
+            }
+
             $rules = [
                 'amount' => ['required', 'numeric', 'min:0.01'],
                 'currency' => ['required', 'string', 'in:INR,AUD,USD,GBP,CAD,EUR,SGD'],

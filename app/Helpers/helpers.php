@@ -1,5 +1,6 @@
 <?php
 
+use App\Core\Session;
 use App\Core\Validator;
 
 function dd($value)
@@ -13,9 +14,69 @@ function dd($value)
 
 function abort($code = 404)
 {
-    http_response_code($code); // Set HTTP response code
-    require __DIR__ . '/../templates/http-response/' . $code . '.php';
+    showError(['status' => $code]);
     die();  // Stop script execution
+}
+
+function showError(array $errorData)
+{
+    // Default to 500 for internal server errors
+    http_response_code($errorData['status'] ?? 500);
+
+    // Check if the request expects HTML or JSON
+    if (isHtmlRequest()) {
+        $filePath = VIEW_PATH . 'http-response/error.php';
+        if (file_exists($filePath)) {
+            extract([
+                'errorCode' => $errorData['status'],
+                'errorTitle' => getErrorTitle($errorData['status']),
+                'errorDescription' => $errorData['message']
+            ]);
+
+            // Include the view file
+            include $filePath;
+        } else {
+            throw new Exception("Error Page not found.");
+        }
+    } else {
+        // Return JSON error response for JSON requests
+        jsonResponse([
+            'success' => false,
+            'error' => $errorData['message'] ?? ''
+        ], $errorData['status']);
+    }
+}
+
+function isHtmlRequest(): bool
+{
+    return strpos($_SERVER['HTTP_ACCEPT'], 'text/html') !== false;
+}
+
+
+/**
+ * Get error title based on the status code
+ *
+ * @param int $status
+ * @return string
+ */
+function getErrorTitle(int $status): string
+{
+    switch ($status) {
+        case 404:
+            return 'Page Not Found';
+        case 500:
+            return 'Internal Server Error';
+        case 401:
+            return 'Unauthorized';
+        case 403:
+            return 'Forbidden';
+        case 405:
+            return 'Method Not Allowed';
+        case 429:
+            return 'Too many requests';
+        default:
+            return 'An Error Occurred';
+    }
 }
 
 function validate(array $data, array $rules): Validator
@@ -34,7 +95,7 @@ function jsonResponse(array $data, int $status = 200): void
 function logPaymentError($error)
 {
     // Get absolute path to logs directory without using realpath
-    $logFile = __DIR__ . '/../logs/payments.log';
+    $logFile = __DIR__ . '/../../storage/logs/payments.log';
     $logsDir = dirname($logFile);
 
     // Create logs directory if it doesn't exist
@@ -58,7 +119,7 @@ function logPaymentError($error)
 function info($data)
 {
     // Get absolute path to logs directory without using realpath
-    $logFile = __DIR__ . '/../logs/app.log';
+    $logFile = __DIR__ . '/../../storage/logs/app.log';
     $logsDir = dirname($logFile);
 
     // Create logs directory if it doesn't exist
@@ -82,4 +143,9 @@ function info($data)
     } catch (Exception $e) {
         error_log("Exception while writing to app log: " . $e->getMessage());
     }
+}
+
+function csrf_token()
+{
+    return (new Session)->generateCSRFToken();
 }

@@ -64,7 +64,6 @@ class PaymentProcessor
 
             // Fetch payment details from Razorpay
             $paymentDetails = $this->api->payment->fetch($paymentId);
-            info($paymentDetails);
 
             // Send email notification
             // $emailData = [
@@ -192,6 +191,8 @@ class PaymentProcessor
             'log_type' => $eventType,
             'data' => json_encode($data)
         ]);
+
+        return $this->db->getLastInsertId();
     }
 
 

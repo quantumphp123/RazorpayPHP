@@ -60,3 +60,12 @@ CREATE TABLE error_logs (
     INDEX idx_error_type (error_type),
     INDEX idx_created_at (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE rate_limits (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    ip VARCHAR(45) NOT NULL,
+    route VARCHAR(255) NOT NULL,
+    timestamp DATETIME NOT NULL,
+    INDEX idx_ip_route (ip, route),
+    INDEX idx_timestamp (timestamp)
+);

@@ -44,13 +44,14 @@ class PaymentController extends Controller
                 return $value !== null;
             });
 
-            (new PaymentProcessor)->logPaymentDetails(
+            $logId = (new PaymentProcessor)->logPaymentDetails(
                 $input['event_type'],
                 $filteredData
             );
 
             jsonResponse([
                 'success' => true,
+                'log_id' => $logId
             ]);
 
         } catch (Exception $e) {
@@ -59,12 +60,18 @@ class PaymentController extends Controller
                 'error' => 'An error occurred: ' . $e->getMessage()
             ], 400);
         }
-
     }
 
     public function verifyPayment()
     {
         try {
+            global $session;
+
+            // Validate CSRF
+            if (!$session->validateCSRFToken($_POST['csrf_token'])) {
+                throw new Exception('Invalid CSRF token');
+            }
+
             $rules = [
                 'payment_id' => ['required', 'string'],
                 'order_id' => ['required', 'string'],
@@ -138,6 +145,45 @@ class PaymentController extends Controller
         $this->view('pages.success', [
             'transactionData' => $transactionData,
             'input' => $input
+        ]);
+    }
+    
+    public function error()
+    {
+        global $db;
+
+        $rules = [
+            'log_id' => ['required', 'string']
+        ];
+        $validator = new Validator($_GET, $rules);
+
+        if (!$validator->validate()) {
+            Redirect::to($GLOBALS['config']->get('app')['url']);
+        }
+
+        $input = $validator->sanitized();
+
+        $logId = $input['log_id'];
+        $error_code = null;
+        $error_description = null;
+        $payment_details = null;
+
+        if ($logId) {
+            // Fetch the log entry
+            $sql = "SELECT data FROM payment_logs WHERE id = :id";
+            $log = $db->query($sql, ['id' => $logId])->find();
+
+            if ($log) {
+                $logData = json_decode($log['data'], true);
+                $error_code = $logData['error_code'] ?? null;
+                $error_description = $logData['error_description'] ?? null;
+                $payment_details = $logData['details'] ?? null;
+            }
+        }
+        $this->view('pages.error', [
+            'error_code' => $error_code,
+            'error_description' => $error_description,
+            'payment_details' => $payment_details
         ]);
     }
 

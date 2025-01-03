@@ -37,23 +37,33 @@ class Router
             $method = $_SERVER['REQUEST_METHOD'];
             $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
-            $route = $this->resolve($method, $path);
-
-            [$controllerClass, $action] = $route['controller'];
-            $params = $route['params'];
-
-            // // Create controller instance with required services
-            $controller = new $controllerClass(
-                // $this->services['paymentProcessor']
-            );
-
-            // Execute the action
-            $controller->$action($params);
+            // Apply Middleware here (before route execution)
+            Middleware::apply('rateLimit', function () use ($method, $path) {
+                $this->execute($method, $path);
+            });
 
         } catch (Exception $e) {
             $this->handleError($e);
         }
     }
+
+    private function execute($method, $path)
+    {
+        $route = $this->resolve($method, $path);
+
+        [$controllerClass, $action] = $route['controller'];
+        $params = $route['params'];
+
+        // // Create controller instance with required services
+        $controller = new $controllerClass(
+            // $this->services['paymentProcessor']
+        );
+
+        // Execute the action
+        $controller->$action($params);
+    }
+
+
 
     private function resolve(string $method, string $path): array
     {
@@ -80,12 +90,12 @@ class Router
         http_response_code($status);
 
         // Check if the request expects HTML or JSON
-        if ($this->isHtmlRequest()) {
+        if (isHtmlRequest()) {
             $filePath = VIEW_PATH . 'http-response/error.php';
             if (file_exists($filePath)) {
                 extract([
                     'errorCode' => $status,
-                    'errorTitle' => $this->getErrorTitle($status),
+                    'errorTitle' => getErrorTitle($status),
                 ]);
 
                 // Include the view file
@@ -99,35 +109,6 @@ class Router
                 'success' => false,
                 'error' => $e->getMessage()
             ], $status);
-        }
-    }
-
-    private function isHtmlRequest(): bool
-    {
-        return strpos($_SERVER['HTTP_ACCEPT'], 'text/html') !== false;
-    }
-
-    /**
-     * Get error title based on the status code
-     *
-     * @param int $status
-     * @return string
-     */
-    private function getErrorTitle(int $status): string
-    {
-        switch ($status) {
-            case 404:
-                return 'Page Not Found';
-            case 500:
-                return 'Internal Server Error';
-            case 401:
-                return 'Unauthorized';
-            case 403:
-                return 'Forbidden';
-            case 405:
-                return 'Method Not Allowed';
-            default:
-                return 'An Error Occurred';
         }
     }
 }

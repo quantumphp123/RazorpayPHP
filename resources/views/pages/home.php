@@ -1,7 +1,7 @@
 <?php
 $pageTitle = "Payments | Quantum IT Innovation";
 include VIEW_PATH . 'layouts/layout.php';
-include  VIEW_PATH . 'components/input-field.php';
+include VIEW_PATH . 'components/input-field.php';
 ?>
 
 <div class="max-w-2xl mx-auto bg-white rounded-lg shadow-md p-6">
@@ -9,6 +9,7 @@ include  VIEW_PATH . 'components/input-field.php';
     <form id="payment-form" class="space-y-4">
         <!-- Personal Information -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <input type="hidden" name="csrf_token" value="<?php echo csrf_token(); ?>">
             <div>
                 <?php inputField('name', 'name', 'Full Name', 'text', true); ?>
             </div>
