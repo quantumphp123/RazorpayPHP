@@ -51,7 +51,7 @@ $(document).ready(function () {
         const loadingOverlay = showLoadingOverlay();
 
         $.ajax({
-            url: 'create_order.php',
+            url: '/create-order',
             method: 'POST',
             data: $(this).serialize(),
             success: function (response) {
@@ -137,7 +137,7 @@ $(document).ready(function () {
         };
 
         $.ajax({
-            url: 'verify_payment.php',
+            url: '/verify-payment',
             method: 'POST',
             data: formData,
             success: function (data) {
@@ -148,7 +148,7 @@ $(document).ready(function () {
                         amount: formData.amount,
                         currency: formData.currency
                     });
-                    window.location.href = 'success.php?payment_id=' +
+                    window.location.href = '/success?payment_id=' +
                         response.razorpay_payment_id;
                 } else {
                     handleError('Payment verification failed: ' + (data.error || 'Unknown error'));
@@ -243,7 +243,7 @@ $(document).ready(function () {
 
     function logPaymentEvent(event_type, data) {
         $.ajax({
-            url: 'log_payment_event.php',
+            url: '/log-payment-event',
             method: 'POST',
             data: {
                 event_type: event_type,

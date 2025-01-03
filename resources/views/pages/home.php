@@ -1,7 +1,7 @@
 <?php
 $pageTitle = "Payments | Quantum IT Innovation";
-include '../templates/layout.php';
-include '../templates/components/input-field.php';
+include VIEW_PATH . 'layouts/layout.php';
+include  VIEW_PATH . 'components/input-field.php';
 ?>
 
 <div class="max-w-2xl mx-auto bg-white rounded-lg shadow-md p-6">
@@ -125,4 +125,4 @@ include '../templates/components/input-field.php';
     </form>
 </div>
 
-<?php include '../templates/footer.php'; ?>
+<?php include VIEW_PATH . 'layouts/footer.php'; ?>

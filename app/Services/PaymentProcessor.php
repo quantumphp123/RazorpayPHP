@@ -1,6 +1,6 @@
 <?php
 
-namespace App;
+namespace App\Services;
 
 use EmailService;
 use Exception;
@@ -12,10 +12,15 @@ class PaymentProcessor
     private $db;
     private $emailService;
 
-    public function __construct(array $config, $db)
+    public function __construct()
     {
-        $this->api = new Api($config['key_id'], $config['key_secret']);
-        $this->db = $db;
+        $this->api = new Api(
+            $GLOBALS['config']->get('payment')['key_id'],
+            $GLOBALS['config']->get('payment')['key_secret']
+        );
+
+        $this->db = $GLOBALS['db'];
+
         // $this->emailService = new EmailService($config['email']);
     }
 

@@ -1,27 +1,9 @@
 <?php
-// success.php
+
 $pageTitle = "Payment Successful";
-include '../templates/layout.php';
-include '../bootstrap.php';
-
-// Validate payment ID
-$validator = validate($_GET, ['payment_id' => ['required', 'string']]);
-if (!$validator->validate()) {
-    header("Location: " . $GLOBALS['config']['app']['url']);
-    exit;
-}
-
-$input = $validator->sanitized();
-
-$transactionData = $GLOBALS['paymentProcessor']->getTransactionDetails($input['payment_id']);
-
-if (!$transactionData) {
-    header("Location: " . $GLOBALS['config']['app']['url']);
-    exit;
-}
+include VIEW_PATH . 'layouts/layout.php';
 ?>
 
-<!-- Modern tech-focused success page -->
 <div class="min-h-screen bg-gray-50 py-12">
     <div class="max-w-2xl mx-auto bg-white rounded-2xl shadow-lg overflow-hidden">
         <!-- Success Animation -->
@@ -78,7 +60,7 @@ if (!$transactionData) {
                         </svg>
                         Print
                     </button>
-                    <a href="download_receipt.php?payment_id=<?php echo urlencode($input['payment_id']); ?>"
+                    <a href="download-receipt/pdf/<?php echo urlencode($input['payment_id']); ?>"
                         class="inline-flex items-center px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
                         <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -116,4 +98,4 @@ if (!$transactionData) {
     }
 </style>
 
-<?php include '../templates/footer.php'; ?>
+<?php include VIEW_PATH . 'layouts/layout.php'; ?>

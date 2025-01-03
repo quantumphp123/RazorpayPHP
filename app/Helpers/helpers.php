@@ -1,6 +1,7 @@
 <?php
 
-require_once 'Validator.php';
+use App\Core\Validator;
+
 function dd($value)
 {
     echo "<pre>";
@@ -20,6 +21,14 @@ function abort($code = 404)
 function validate(array $data, array $rules): Validator
 {
     return new Validator($data, $rules);
+}
+
+function jsonResponse(array $data, int $status = 200): void
+{
+    http_response_code($status);
+    header('Content-Type: application/json');
+    echo json_encode($data);
+    exit;
 }
 
 function logPaymentError($error)
