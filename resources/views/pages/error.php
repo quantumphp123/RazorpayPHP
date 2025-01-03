@@ -17,7 +17,7 @@
             <p class="text-gray-600 mb-4"><?php echo htmlspecialchars($error_message ?? 'An error occurred.'); ?></p>
 
             <div class="mt-6">
-                <a href="/index.php" class="text-blue-600 hover:underline">Return to Homepage</a>
+                <a href="/" class="text-blue-600 hover:underline">Return to Homepage</a>
             </div>
         </div>
     </div>
