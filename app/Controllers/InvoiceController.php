@@ -127,38 +127,45 @@ class InvoiceController extends Controller
     public function handleRazorpaySuccess()
     {
         $input = json_decode(file_get_contents('php://input'), true);
+        $this->logRazorpayDebug(['step' => 'incoming_data', 'data' => $input]);
         $invoiceId = $input['invoice_id'] ?? null;
         $razorpayPaymentId = $input['razorpay_payment_id'] ?? null;
         $razorpayOrderId = $input['razorpay_order_id'] ?? null;
         $razorpaySignature = $input['razorpay_signature'] ?? null;
 
         if (!$invoiceId || !$razorpayPaymentId || !$razorpaySignature) {
+            $this->logRazorpayDebug(['step' => 'missing_data', 'invoiceId' => $invoiceId, 'razorpayPaymentId' => $razorpayPaymentId, 'razorpaySignature' => $razorpaySignature]);
             http_response_code(400);
             echo json_encode(['success' => false, 'message' => 'Missing data']);
             return;
         }
 
-        // TODO: Verify signature using Razorpay Key Secret (security step)
-        // You can use Razorpay's PHP SDK for this: https://github.com/razorpay/razorpay-php
+        try {
+            $this->logRazorpayDebug(['step' => 'before_zoho', 'invoiceId' => $invoiceId]);
+            $zohoService = new \App\Services\ZohoService($GLOBALS['config']);
+            $invoice = $zohoService->fetchInvoiceById($invoiceId);
+            $this->logRazorpayDebug(['step' => 'zoho_invoice', 'invoice' => $invoice]);
 
-        $zohoService = new \App\Services\ZohoService($GLOBALS['config']);
-        $invoice = $zohoService->fetchInvoiceById($invoiceId);
-        if (!$invoice) {
-            http_response_code(404);
-            echo json_encode(['success' => false, 'message' => 'Invoice not found']);
-            return;
+            if (!$invoice) {
+                $this->logRazorpayDebug(['step' => 'invoice_not_found', 'invoiceId' => $invoiceId]);
+                http_response_code(404);
+                echo json_encode(['success' => false, 'message' => 'Invoice not found']);
+                return;
+            }
+            $zohoApiResponse = $zohoService->recordPaymentForInvoice($invoice, $invoice['total']);
+            $this->logRazorpayDebug(['step' => 'zoho_payment_response', 'response' => $zohoApiResponse]);
+
+            $zohoService->updateInvoiceAndInsertRazorpayPayment($invoice, $invoiceId, $razorpayPaymentId, $razorpayOrderId, $razorpaySignature, $zohoApiResponse);
+            $this->logRazorpayDebug(['step' => 'payment_success', 'invoiceId' => $invoiceId]);
+            echo json_encode([
+                'success' => true,
+                'redirect' => '/zoho-success?invoice_id=' . urlencode($invoiceId)
+            ]);
+        } catch (\Exception $e) {
+            $this->logRazorpayDebug(['step' => 'exception', 'error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            http_response_code(500);
+            echo json_encode(['success' => false, 'message' => 'Server error']);
         }
-        // Mark invoice as paid in Zoho Books and store Zoho response in its own table if needed
-        $zohoApiResponse = $zohoService->recordPaymentForInvoice($invoice, $invoice['total']);
-
-        // Use service to update invoice and insert Razorpay payment, passing Zoho response
-        // You may want to implement updateInvoiceAndInsertRazorpayPayment in ZohoService
-        $zohoService->updateInvoiceAndInsertRazorpayPayment($invoice, $invoiceId, $razorpayPaymentId, $razorpayOrderId, $razorpaySignature, $zohoApiResponse);
-
-        echo json_encode([
-            'success' => true,
-            'redirect' => '/zoho-success?invoice_id=' . urlencode($invoiceId)
-        ]);
         exit;
     }
 
@@ -509,7 +516,6 @@ class InvoiceController extends Controller
             <h2>Pay Invoice #<?= htmlspecialchars($invoice['invoice_number']) ?></h2>
             <p>Amount Due: <strong><?= htmlspecialchars($invoice['total']) ?> <?= htmlspecialchars($invoice['currency_code']) ?></strong></p>
             <div id="razorpay-button-container"></div>
-            <p style="margin-top:1em;color:#888;">You can pay using UPI apps like PhonePe, Google Pay, Paytm, or any UPI ID (if your currency is INR).</p>
             <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
             <script>
             function renderRazorpayButton() {
@@ -590,5 +596,12 @@ class InvoiceController extends Controller
         }
         </style>
         <?php
+    }
+
+    // Powerful logging for Razorpay debugging
+    private function logRazorpayDebug($data) {
+        $logFile = __DIR__ . '/../../../storage/logs/razorpay_debug.txt';
+        $entry = "[" . date('Y-m-d H:i:s') . "] " . print_r($data, true) . "\n";
+        file_put_contents($logFile, $entry, FILE_APPEND);
     }
 } 

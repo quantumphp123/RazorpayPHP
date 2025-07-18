@@ -218,6 +218,7 @@ class ZohoService
      */
     public function updateInvoiceAndInsertRazorpayPayment($invoice, $invoiceId, $razorpayPaymentId, $razorpayOrderId, $razorpaySignature, $zohoApiResponse = null)
     {
+        $this->logRazorpayDebug(['step' => 'start_updateInvoiceAndInsertRazorpayPayment', 'invoiceId' => $invoiceId, 'razorpayPaymentId' => $razorpayPaymentId, 'razorpayOrderId' => $razorpayOrderId, 'razorpaySignature' => $razorpaySignature, 'zohoApiResponse' => $zohoApiResponse]);
         $invoice['razorpay_payment'] = [
             'payment_id' => $razorpayPaymentId,
             'order_id' => $razorpayOrderId,
@@ -233,7 +234,8 @@ class ZohoService
         $invoice['payment_made'] = $invoice['total'];
         $invoice['balance'] = 0;
         $db = $GLOBALS['db'];
-        $db->query("UPDATE invoices SET data = ? WHERE invoice_id = ?", [json_encode($invoice), $invoiceId]);
+        $updateResult = $db->query("UPDATE invoices SET data = ? WHERE invoice_id = ?", [json_encode($invoice), $invoiceId]);
+        $this->logRazorpayDebug(['step' => 'after_update_invoices', 'query' => 'UPDATE invoices SET data = ? WHERE invoice_id = ?', 'params' => [json_encode($invoice), $invoiceId], 'result' => $updateResult]);
 
         // Optionally, insert into razorpay_payment table (create if not exists)
         $billing = $invoice['billing_address'] ?? [];
@@ -253,34 +255,36 @@ class ZohoService
         $payment_method = 'Razorpay';
         $transaction_time = date('Y-m-d H:i:s');
         $now = date('Y-m-d H:i:s');
-        $db->query(
+        $insertParams = [
+            $razorpayPaymentId,
+            $razorpayOrderId,
+            $invoice['invoice_id'],
+            $customer,
+            $email,
+            $tel,
+            $address,
+            $city,
+            $state,
+            $zip_code,
+            $country,
+            $amount,
+            $currency_type,
+            $original_amount,
+            $original_currency,
+            $status,
+            $payment_method,
+            $razorpaySignature,
+            json_encode($invoice['razorpay_payment']),
+            $zohoApiResponse ? json_encode($zohoApiResponse) : null,
+            $transaction_time,
+            $now,
+            $now
+        ];
+        $insertResult = $db->query(
             "INSERT INTO razorpay_payment (payment_id, order_id, zoho_invoice_id, name, email, tel, address, city, state, zip_code, country, amount, currency_type, original_amount, original_currency, status, payment_method, razorpay_signature, razorpay_response, zoho_response, transaction_time, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [
-                $razorpayPaymentId,
-                $razorpayOrderId,
-                $invoice['invoice_id'],
-                $customer,
-                $email,
-                $tel,
-                $address,
-                $city,
-                $state,
-                $zip_code,
-                $country,
-                $amount,
-                $currency_type,
-                $original_amount,
-                $original_currency,
-                $status,
-                $payment_method,
-                $razorpaySignature,
-                json_encode($invoice['razorpay_payment']),
-                $zohoApiResponse ? json_encode($zohoApiResponse) : null,
-                $transaction_time,
-                $now,
-                $now
-            ]
+            $insertParams
         );
+        $this->logRazorpayDebug(['step' => 'after_insert_razorpay_payment', 'query' => 'INSERT INTO razorpay_payment ...', 'params' => $insertParams, 'result' => $insertResult]);
     }
 
     private function makeRequest($url)
@@ -367,5 +371,12 @@ class ZohoService
         // Update in-memory config for this instance
         // Note: This only updates the local property, not the global config
         $this->accessToken = $newToken;
+    }
+
+    // Add logging helper for Razorpay DB/API actions
+    private function logRazorpayDebug($data) {
+        $logFile = __DIR__ . '/../../storage/logs/razorpay_debug.txt';
+        $entry = "[" . date('Y-m-d H:i:s') . "] " . print_r($data, true) . "\n";
+        file_put_contents($logFile, $entry, FILE_APPEND);
     }
 } 
