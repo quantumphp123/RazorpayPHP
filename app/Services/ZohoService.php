@@ -91,13 +91,32 @@ class ZohoService
      */
     public function prepareTransactionData($invoice, $payerId = null)
     {
+        // Determine payment method
+        $payment_method = 'Zoho';
+        $card_network = null;
+        $transaction_fee = null;
+        $payment_id = '';
+        $created_at = date('Y-m-d H:i:s');
+
+        if (!empty($invoice['paypal_payment'])) {
+            $payment_method = 'PayPal';
+            $payment_id = $invoice['paypal_payment']['payment_id'] ?? '';
+            $created_at = $invoice['paypal_payment']['paid_at'] ?? $created_at;
+            // Optionally extract more PayPal details if needed
+        } elseif (!empty($invoice['razorpay_payment'])) {
+            $payment_method = 'Razorpay';
+            $payment_id = $invoice['razorpay_payment']['payment_id'] ?? '';
+            $created_at = $invoice['razorpay_payment']['paid_at'] ?? $created_at;
+            // Optionally extract more Razorpay details if needed
+        }
+
         return [
             'invoice_id' => $invoice['invoice_id'],
-            'payment_id' => $payerId ?? ($invoice['paypal_payment']['payment_id'] ?? ''),
-            'created_at' => $invoice['paypal_payment']['paid_at'] ?? date('Y-m-d H:i:s'),
+            'payment_id' => $payerId ?? $payment_id,
+            'created_at' => $created_at,
             'amount' => $invoice['total'],
             'currency_type' => $invoice['currency_code'],
-            'payment_method' => 'Zoho',
+            'payment_method' => $payment_method,
             'status' => $invoice['status'],
             // Add more fields as needed
         ];
