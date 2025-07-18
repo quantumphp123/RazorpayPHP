@@ -27,6 +27,20 @@ class ReceiptController
             $paymentId = $input['payment_id'];
             $transactionData = (new PaymentProcessor)->getTransactionDetails($paymentId);
 
+            // Fallback for Zoho-only payments
+            if (!$transactionData) {
+                // Try to find invoice by invoice_id (assume payment_id is invoice_id for Zoho-only)
+                $zohoService = new \App\Services\ZohoService($GLOBALS['config']);
+                $invoice = $zohoService->fetchInvoiceById($paymentId);
+                if ($invoice) {
+                    $transactionData = [
+                        'transaction' => $zohoService->prepareTransactionData($invoice)
+                    ];
+                } else {
+                    throw new Exception('Transaction or Invoice not found.');
+                }
+            }
+
             // Create new PDF document
             $pdf = new PDF(PDF_PAGE_ORIENTATION, PDF_UNIT, PDF_PAGE_FORMAT, true, 'UTF-8', false);
 
@@ -218,6 +232,19 @@ class ReceiptController
 
             // Assuming you have the same method for retrieving transaction details
             $transactionData = (new PaymentProcessor)->getTransactionDetails($paymentId);
+
+            // Fallback for Zoho-only payments
+            if (!$transactionData) {
+                $zohoService = new \App\Services\ZohoService($GLOBALS['config']);
+                $invoice = $zohoService->fetchInvoiceById($paymentId);
+                if ($invoice) {
+                    $transactionData = [
+                        'transaction' => $zohoService->prepareTransactionData($invoice)
+                    ];
+                } else {
+                    throw new Exception('Transaction or Invoice not found.');
+                }
+            }
 
             // Company Information (adjust as necessary)
             $companyName = $GLOBALS['config']->get('app')['name'];
