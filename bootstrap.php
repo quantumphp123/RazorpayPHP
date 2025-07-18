@@ -25,6 +25,7 @@ try {
         'database' => require __DIR__ . '/config/database.php',
         'payment' => require __DIR__ . '/config/payment.php',
         'mail' => require __DIR__ . '/config/mail.php',
+        'zoho' => require __DIR__ . '/config/zoho.php',
     ]);
 
     // Configure error reporting
