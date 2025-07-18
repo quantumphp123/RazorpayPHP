@@ -283,7 +283,7 @@ class InvoiceController extends Controller
                 <?php endif; ?>
             </div>
             <div style="display: flex; gap: 1em; margin-top: 2em; justify-content: center;">
-                <a href="/invoice/pay?invoice_id=<?= urlencode($invoice['invoice_number']) ?>" class="pay-btn-pro" style="background: linear-gradient(90deg, #0070ba 60%, #003087 100%);">Pay with PayPal</a>
+                <!-- <a href="/invoice/pay?invoice_id=<?= urlencode($invoice['invoice_number']) ?>" class="pay-btn-pro" style="background: linear-gradient(90deg, #0070ba 60%, #003087 100%);">Pay with PayPal</a> -->
                 <a href="/invoice/razorpay-pay?invoice_id=<?= urlencode($invoice['invoice_number']) ?>" class="pay-btn-pro" style="background: linear-gradient(90deg, #f37254 60%, #fa8c68 100%);">Pay with Razorpay</a>
             </div>
         </div>

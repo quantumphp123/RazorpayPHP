@@ -204,14 +204,7 @@ class ReceiptController
                 'fgcolor' => array(0, 0, 0),
                 'bgcolor' => false
             );
-
-            // Use /zoho-success?invoice_id=... if invoice_id is present, else /success?payment_id=...
-            if (!empty($transactionData['transaction']['zoho_invoice_id'])) {
-                $qrUrl = $GLOBALS['config']->get('app')['url'] . '/zoho-success?invoice_id=' . urlencode($transactionData['transaction']['invoice_id']);
-            } else {
-                $qrUrl = $GLOBALS['config']->get('app')['url'] . '/success?payment_id=' . $paymentId;
-            }
-            $pdf->write2DBarcode($qrUrl, 'QRCODE,L', 15, $pdf->GetY() + 5, 30, 30, $style);
+            $pdf->write2DBarcode($GLOBALS['config']->get('app')['url'] . '/success?payment_id=' . $paymentId, 'QRCODE,L', 15, $pdf->GetY() + 5, 30, 30, $style);
 
             ob_end_clean();
             $pdf->Output('receipt_' . $paymentId . '.pdf', 'D');
