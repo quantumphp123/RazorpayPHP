@@ -137,51 +137,53 @@ class ZohoService
      */
     public function updateInvoiceAndInsertPayPalPayment($invoice, $invoiceId, $orderId, $payerId, $details)
     {
-        $invoice['paypal_payment'] = [
-            'order_id' => $orderId,
-            'payment_id' => $payerId,
-            'paypal_response' => $details,
-            'paid_at' => date('Y-m-d H:i:s')
-        ];
-        $invoice['status'] = 'paid';
-        $invoice['payment_made'] = $invoice['total'];
-        $invoice['balance'] = 0;
-        $db = $GLOBALS['db'];
-        $db->query("UPDATE invoices SET data = ? WHERE invoice_id = ?", [json_encode($invoice), $invoiceId]);
+        try {
+            $invoice['paypal_payment'] = [
+                'order_id' => $orderId,
+                'payment_id' => $payerId,
+                'paypal_response' => $details,
+                'paid_at' => date('Y-m-d H:i:s')
+            ];
+            $invoice['status'] = 'paid';
+            $invoice['payment_made'] = $invoice['total'];
+            $invoice['balance'] = 0;
+            $db = $GLOBALS['db'];
+            
+            // Update invoice in database
+            $updateResult = $db->query("UPDATE invoices SET data = ? WHERE invoice_id = ?", [json_encode($invoice), $invoiceId]);
+            file_put_contents(__DIR__ . '/../../public/zoho_debug.txt', "[updateInvoiceAndInsertPayPalPayment] Invoice update result: " . json_encode($updateResult) . "\n", FILE_APPEND);
 
-        // Insert into paypal_payment table with all required fields
-        $billing = $invoice['billing_address'] ?? [];
-        $customer = $invoice['customer_name'] ?? '';
-        $email = $invoice['email'] ?? '';
-        $tel = $invoice['phone'] ?? '';
-        $address = $billing['address'] ?? '';
-        $city = $billing['city'] ?? '';
-        $state = $billing['state'] ?? '';
-        $zip_code = $billing['zip'] ?? '';
-        $country = $billing['country'] ?? '';
-        $amount = $invoice['total'] ?? 0;
-        $currency_type = $invoice['currency_code'] ?? '';
-        $original_amount = $amount;
-        $original_currency = $currency_type;
-        $bank_ref_no = $details['purchase_units'][0]['payments']['captures'][0]['id'] ?? null;
-        $status = $details['status'] ?? 'COMPLETED';
-        $payment_method = 'PayPal';
-        $card_network = null;
-        $transaction_fee = $details['purchase_units'][0]['payments']['captures'][0]['seller_receivable_breakdown']['paypal_fee']['value'] ?? null;
-        $service_tax = null;
-        $error_message = $details['error'] ?? null;
-        $paypal_response = json_encode($details);
-        $transaction_time = $details['update_time'] ?? date('Y-m-d H:i:s');
-        if ($transaction_time && strpos($transaction_time, 'T') !== false) {
-            // Convert ISO 8601 to MySQL datetime
-            $dt = new \DateTime($transaction_time);
-            $transaction_time = $dt->format('Y-m-d H:i:s');
-        }
-        $now = date('Y-m-d H:i:s');
+            // Insert into paypal_payment table with all required fields
+            $billing = $invoice['billing_address'] ?? [];
+            $customer = $invoice['customer_name'] ?? '';
+            $email = $invoice['email'] ?? '';
+            $tel = $invoice['phone'] ?? '';
+            $address = $billing['address'] ?? '';
+            $city = $billing['city'] ?? '';
+            $state = $billing['state'] ?? '';
+            $zip_code = $billing['zip'] ?? '';
+            $country = $billing['country'] ?? '';
+            $amount = $invoice['total'] ?? 0;
+            $currency_type = $invoice['currency_code'] ?? '';
+            $original_amount = $amount;
+            $original_currency = $currency_type;
+            $bank_ref_no = $details['purchase_units'][0]['payments']['captures'][0]['id'] ?? null;
+            $status = $details['status'] ?? 'COMPLETED';
+            $payment_method = 'PayPal';
+            $card_network = null;
+            $transaction_fee = $details['purchase_units'][0]['payments']['captures'][0]['seller_receivable_breakdown']['paypal_fee']['value'] ?? null;
+            $service_tax = null;
+            $error_message = $details['error'] ?? null;
+            $paypal_response = json_encode($details);
+            $transaction_time = $details['update_time'] ?? date('Y-m-d H:i:s');
+            if ($transaction_time && strpos($transaction_time, 'T') !== false) {
+                // Convert ISO 8601 to MySQL datetime
+                $dt = new \DateTime($transaction_time);
+                $transaction_time = $dt->format('Y-m-d H:i:s');
+            }
+            $now = date('Y-m-d H:i:s');
 
-        $db->query(
-            "INSERT INTO paypal_payment (payment_id, order_id, zoho_invoice_id, name, email, tel, address, city, state, zip_code, country, amount, currency_type, original_amount, original_currency, bank_ref_no, status, payment_method, card_network, transaction_fee, service_tax, error_message, paypal_response, zoho_response, transaction_time, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [
+            $insertParams = [
                 $payerId,
                 $orderId,
                 $invoice['invoice_id'], // zoho_invoice_id
@@ -209,8 +211,34 @@ class ZohoService
                 $transaction_time,
                 $now,
                 $now
-            ]
-        );
+            ];
+
+            $insertResult = $db->query(
+                "INSERT INTO paypal_payment (payment_id, order_id, zoho_invoice_id, name, email, tel, address, city, state, zip_code, country, amount, currency_type, original_amount, original_currency, bank_ref_no, status, payment_method, card_network, transaction_fee, service_tax, error_message, paypal_response, zoho_response, transaction_time, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                $insertParams
+            );
+            
+            file_put_contents(__DIR__ . '/../../public/zoho_debug.txt', "[updateInvoiceAndInsertPayPalPayment] PayPal payment insert result: " . json_encode($insertResult) . "\n", FILE_APPEND);
+            
+            return ['success' => true, 'message' => 'Payment recorded successfully'];
+            
+        } catch (\Exception $e) {
+            $errorMessage = "[updateInvoiceAndInsertPayPalPayment] Error: " . $e->getMessage();
+            file_put_contents(__DIR__ . '/../../public/zoho_debug.txt', $errorMessage . "\n", FILE_APPEND);
+            
+            // Log to error_logs table if it exists
+            try {
+                $db = $GLOBALS['db'];
+                $db->query(
+                    "INSERT INTO error_logs (error_type, error_message) VALUES (?, ?)",
+                    ['paypal_payment_error', $e->getMessage()]
+                );
+            } catch (\Exception $logError) {
+                file_put_contents(__DIR__ . '/../../public/zoho_debug.txt', "[updateInvoiceAndInsertPayPalPayment] Failed to log error: " . $logError->getMessage() . "\n", FILE_APPEND);
+            }
+            
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
     }
 
     /**
@@ -218,44 +246,47 @@ class ZohoService
      */
     public function updateInvoiceAndInsertRazorpayPayment($invoice, $invoiceId, $razorpayPaymentId, $razorpayOrderId, $razorpaySignature, $zohoApiResponse = null)
     {
-        $invoice['razorpay_payment'] = [
-            'payment_id' => $razorpayPaymentId,
-            'order_id' => $razorpayOrderId,
-            'signature' => $razorpaySignature,
-            'paid_at' => date('Y-m-d H:i:s'),
-            'razorpay_response' => [
+        try {
+            $invoice['razorpay_payment'] = [
                 'payment_id' => $razorpayPaymentId,
                 'order_id' => $razorpayOrderId,
-                'signature' => $razorpaySignature
-            ]
-        ];
-        $invoice['status'] = 'paid';
-        $invoice['payment_made'] = $invoice['total'];
-        $invoice['balance'] = 0;
-        $db = $GLOBALS['db'];
-        $db->query("UPDATE invoices SET data = ? WHERE invoice_id = ?", [json_encode($invoice), $invoiceId]);
+                'signature' => $razorpaySignature,
+                'paid_at' => date('Y-m-d H:i:s'),
+                'razorpay_response' => [
+                    'payment_id' => $razorpayPaymentId,
+                    'order_id' => $razorpayOrderId,
+                    'signature' => $razorpaySignature
+                ]
+            ];
+            $invoice['status'] = 'paid';
+            $invoice['payment_made'] = $invoice['total'];
+            $invoice['balance'] = 0;
+            $db = $GLOBALS['db'];
+            
+            // Update invoice in database
+            $updateResult = $db->query("UPDATE invoices SET data = ? WHERE invoice_id = ?", [json_encode($invoice), $invoiceId]);
+            file_put_contents(__DIR__ . '/../../public/zoho_debug.txt', "[updateInvoiceAndInsertRazorpayPayment] Invoice update result: " . json_encode($updateResult) . "\n", FILE_APPEND);
 
-        // Optionally, insert into razorpay_payment table (create if not exists)
-        $billing = $invoice['billing_address'] ?? [];
-        $customer = $invoice['customer_name'] ?? '';
-        $email = $invoice['email'] ?? '';
-        $tel = $invoice['phone'] ?? '';
-        $address = $billing['address'] ?? '';
-        $city = $billing['city'] ?? '';
-        $state = $billing['state'] ?? '';
-        $zip_code = $billing['zip'] ?? '';
-        $country = $billing['country'] ?? '';
-        $amount = $invoice['total'] ?? 0;
-        $currency_type = $invoice['currency_code'] ?? '';
-        $original_amount = $amount;
-        $original_currency = $currency_type;
-        $status = 'COMPLETED';
-        $payment_method = 'Razorpay';
-        $transaction_time = date('Y-m-d H:i:s');
-        $now = date('Y-m-d H:i:s');
-        $db->query(
-            "INSERT INTO razorpay_payment (payment_id, order_id, zoho_invoice_id, name, email, tel, address, city, state, zip_code, country, amount, currency_type, original_amount, original_currency, status, payment_method, razorpay_signature, razorpay_response, zoho_response, transaction_time, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [
+            // Insert into razorpay_payment table
+            $billing = $invoice['billing_address'] ?? [];
+            $customer = $invoice['customer_name'] ?? '';
+            $email = $invoice['email'] ?? '';
+            $tel = $invoice['phone'] ?? '';
+            $address = $billing['address'] ?? '';
+            $city = $billing['city'] ?? '';
+            $state = $billing['state'] ?? '';
+            $zip_code = $billing['zip'] ?? '';
+            $country = $billing['country'] ?? '';
+            $amount = $invoice['total'] ?? 0;
+            $currency_type = $invoice['currency_code'] ?? '';
+            $original_amount = $amount;
+            $original_currency = $currency_type;
+            $status = 'COMPLETED';
+            $payment_method = 'Razorpay';
+            $transaction_time = date('Y-m-d H:i:s');
+            $now = date('Y-m-d H:i:s');
+            
+            $insertParams = [
                 $razorpayPaymentId,
                 $razorpayOrderId,
                 $invoice['invoice_id'],
@@ -279,8 +310,34 @@ class ZohoService
                 $transaction_time,
                 $now,
                 $now
-            ]
-        );
+            ];
+            
+            $insertResult = $db->query(
+                "INSERT INTO razorpay_payment (payment_id, order_id, zoho_invoice_id, name, email, tel, address, city, state, zip_code, country, amount, currency_type, original_amount, original_currency, status, payment_method, razorpay_signature, razorpay_response, zoho_response, transaction_time, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                $insertParams
+            );
+            
+            file_put_contents(__DIR__ . '/../../public/zoho_debug.txt', "[updateInvoiceAndInsertRazorpayPayment] Razorpay payment insert result: " . json_encode($insertResult) . "\n", FILE_APPEND);
+            
+            return ['success' => true, 'message' => 'Payment recorded successfully'];
+            
+        } catch (\Exception $e) {
+            $errorMessage = "[updateInvoiceAndInsertRazorpayPayment] Error: " . $e->getMessage();
+            file_put_contents(__DIR__ . '/../../public/zoho_debug.txt', $errorMessage . "\n", FILE_APPEND);
+            
+            // Log to error_logs table if it exists
+            try {
+                $db = $GLOBALS['db'];
+                $db->query(
+                    "INSERT INTO error_logs (error_type, error_message) VALUES (?, ?)",
+                    ['razorpay_payment_error', $e->getMessage()]
+                );
+            } catch (\Exception $logError) {
+                file_put_contents(__DIR__ . '/../../public/zoho_debug.txt', "[updateInvoiceAndInsertRazorpayPayment] Failed to log error: " . $logError->getMessage() . "\n", FILE_APPEND);
+            }
+            
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
     }
 
     private function makeRequest($url)

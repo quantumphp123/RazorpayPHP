@@ -26,6 +26,7 @@ return function ($router) {
     
     $router->get('/invoice/razorpay-pay', [InvoiceController::class,'showRazorpayPayment']);
     $router->post('/invoice/razorpay-success', [InvoiceController::class,'handleRazorpaySuccess']);
+    $router->post('/create-razorpay-order', [InvoiceController::class,'createRazorpayOrder']);
 
     $router->get('/zoho-success', [InvoiceController::class, 'zohoSuccess']);
 

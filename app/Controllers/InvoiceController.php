@@ -126,39 +126,58 @@ class InvoiceController extends Controller
 
     public function handleRazorpaySuccess()
     {
-        $input = json_decode(file_get_contents('php://input'), true);
-        $invoiceId = $input['invoice_id'] ?? null;
-        $razorpayPaymentId = $input['razorpay_payment_id'] ?? null;
-        $razorpayOrderId = $input['razorpay_order_id'] ?? null;
-        $razorpaySignature = $input['razorpay_signature'] ?? null;
+        try {
+            $input = json_decode(file_get_contents('php://input'), true);
+            $invoiceId = $input['invoice_id'] ?? null;
+            $razorpayPaymentId = $input['razorpay_payment_id'] ?? null;
+            $razorpayOrderId = $input['razorpay_order_id'] ?? null;
+            $razorpaySignature = $input['razorpay_signature'] ?? null;
 
-        if (!$invoiceId || !$razorpayPaymentId || !$razorpaySignature) {
-            http_response_code(400);
-            echo json_encode(['success' => false, 'message' => 'Missing data']);
-            return;
+            if (!$invoiceId || !$razorpayPaymentId || !$razorpaySignature) {
+                http_response_code(400);
+                echo json_encode(['success' => false, 'message' => 'Missing data']);
+                return;
+            }
+
+            // Verify signature using Razorpay Key Secret
+            $razorpayConfig = require __DIR__ . '/../../config/payment.php';
+            $keySecret = $razorpayConfig['key_secret'];
+            
+            $expectedSignature = hash_hmac('sha256', $razorpayOrderId . '|' . $razorpayPaymentId, $keySecret);
+            if (!hash_equals($expectedSignature, $razorpaySignature)) {
+                http_response_code(400);
+                echo json_encode(['success' => false, 'message' => 'Invalid signature']);
+                return;
+            }
+
+            $zohoService = new \App\Services\ZohoService($GLOBALS['config']);
+            $invoice = $zohoService->fetchInvoiceById($invoiceId);
+            if (!$invoice) {
+                http_response_code(404);
+                echo json_encode(['success' => false, 'message' => 'Invoice not found']);
+                return;
+            }
+            
+            // Mark invoice as paid in Zoho Books and store Zoho response in its own table if needed
+            $zohoApiResponse = $zohoService->recordPaymentForInvoice($invoice, $invoice['total']);
+
+            // Use service to update invoice and insert Razorpay payment, passing Zoho response
+            $result = $zohoService->updateInvoiceAndInsertRazorpayPayment($invoice, $invoiceId, $razorpayPaymentId, $razorpayOrderId, $razorpaySignature, $zohoApiResponse);
+            
+            if (!$result['success']) {
+                http_response_code(500);
+                echo json_encode(['success' => false, 'message' => 'Failed to record payment: ' . $result['error']]);
+                return;
+            }
+
+            echo json_encode([
+                'success' => true,
+                'redirect' => '/zoho-success?invoice_id=' . urlencode($invoiceId)
+            ]);
+        } catch (\Exception $e) {
+            http_response_code(500);
+            echo json_encode(['success' => false, 'message' => 'Server error: ' . $e->getMessage()]);
         }
-
-        // TODO: Verify signature using Razorpay Key Secret (security step)
-        // You can use Razorpay's PHP SDK for this: https://github.com/razorpay/razorpay-php
-
-        $zohoService = new \App\Services\ZohoService($GLOBALS['config']);
-        $invoice = $zohoService->fetchInvoiceById($invoiceId);
-        if (!$invoice) {
-            http_response_code(404);
-            echo json_encode(['success' => false, 'message' => 'Invoice not found']);
-            return;
-        }
-        // Mark invoice as paid in Zoho Books and store Zoho response in its own table if needed
-        $zohoApiResponse = $zohoService->recordPaymentForInvoice($invoice, $invoice['total']);
-
-        // Use service to update invoice and insert Razorpay payment, passing Zoho response
-        // You may want to implement updateInvoiceAndInsertRazorpayPayment in ZohoService
-        $zohoService->updateInvoiceAndInsertRazorpayPayment($invoice, $invoiceId, $razorpayPaymentId, $razorpayOrderId, $razorpaySignature, $zohoApiResponse);
-
-        echo json_encode([
-            'success' => true,
-            'redirect' => '/zoho-success?invoice_id=' . urlencode($invoiceId)
-        ]);
         exit;
     }
 
@@ -182,6 +201,92 @@ class InvoiceController extends Controller
         }
         $transactionData = $zohoService->prepareTransactionData($invoice);
         $this->view('pages.zoho-success', ['transaction' => $transactionData]);
+    }
+
+    public function createRazorpayOrder()
+    {
+        try {
+            $input = json_decode(file_get_contents('php://input'), true);
+            $invoiceId = $input['invoice_id'] ?? null;
+            $amount = $input['amount'] ?? null;
+            $currency = $input['currency'] ?? null;
+            $orderId = $input['order_id'] ?? null;
+
+            if (!$invoiceId || !$amount || !$currency || !$orderId) {
+                http_response_code(400);
+                echo json_encode(['success' => false, 'message' => 'Missing required parameters']);
+                return;
+            }
+
+            // Get Razorpay credentials from config
+            $razorpayConfig = require __DIR__ . '/../../config/payment.php';
+            $keyId = $razorpayConfig['key_id'];
+            $keySecret = $razorpayConfig['key_secret'];
+
+            if (!$keyId || !$keySecret) {
+                file_put_contents(__DIR__ . '/../../public/zoho_debug.txt', "[createRazorpayOrder] Missing Razorpay credentials\n", FILE_APPEND);
+                http_response_code(500);
+                echo json_encode(['success' => false, 'message' => 'Razorpay credentials not configured']);
+                return;
+            }
+
+            // Create Razorpay order using their API
+            $url = 'https://api.razorpay.com/v1/orders';
+            $data = [
+                'amount' => $amount,
+                'currency' => $currency,
+                'receipt' => $orderId,
+                'notes' => [
+                    'invoice_id' => $invoiceId
+                ]
+            ];
+
+            $ch = curl_init($url);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'Content-Type: application/json',
+                'Authorization: Basic ' . base64_encode($keyId . ':' . $keySecret)
+            ]);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+            
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlError = curl_error($ch);
+            curl_close($ch);
+
+            // Log the request and response for debugging
+            file_put_contents(__DIR__ . '/../../public/zoho_debug.txt', "[createRazorpayOrder] Request: " . json_encode($data) . "\nHTTP Code: $httpCode\nResponse: $response\nCurl Error: $curlError\n", FILE_APPEND);
+
+            if ($httpCode === 200) {
+                $result = json_decode($response, true);
+                if (isset($result['id'])) {
+                    echo json_encode([
+                        'success' => true,
+                        'razorpay_order_id' => $result['id']
+                    ]);
+                } else {
+                    echo json_encode([
+                        'success' => false,
+                        'message' => 'Invalid response from Razorpay'
+                    ]);
+                }
+            } else {
+                $errorResponse = json_decode($response, true);
+                $errorMessage = isset($errorResponse['error']['description']) ? $errorResponse['error']['description'] : 'Failed to create Razorpay order';
+                echo json_encode([
+                    'success' => false,
+                    'message' => $errorMessage
+                ]);
+            }
+        } catch (\Exception $e) {
+            file_put_contents(__DIR__ . '/../../public/zoho_debug.txt', "[createRazorpayOrder] Error: " . $e->getMessage() . "\n", FILE_APPEND);
+            http_response_code(500);
+            echo json_encode(['success' => false, 'message' => 'Server error: ' . $e->getMessage()]);
+        }
+        exit;
     }
 
     private function storeInvoiceInDatabase($invoice)
@@ -504,6 +609,13 @@ class InvoiceController extends Controller
 
     private function renderRazorpayCard($invoice)
     {
+        // Generate a unique order ID for Razorpay
+        $orderId = 'order_' . time() . '_' . $invoice['invoice_id'];
+        
+        // Get Razorpay credentials from config
+        $razorpayConfig = require __DIR__ . '/../../config/payment.php';
+        $keyId = $razorpayConfig['key_id'];
+        
         ?>
         <div class="razorpay-card">
             <h2>Pay Invoice #<?= htmlspecialchars($invoice['invoice_number']) ?></h2>
@@ -529,38 +641,66 @@ class InvoiceController extends Controller
                 button.style.textAlign = 'center';
                 button.style.width = '100%';
                 button.onclick = function(e){
-                    var options = {
-                        "key": "rzp_live_E0MCMrm6gH6X9l",
-                        "amount": "<?= intval($invoice['total'] * 100) ?>",
-                        "currency": "<?= htmlspecialchars($invoice['currency_code']) ?>",
-                        "name": "Quantum IT Innovation",
-                        
-                        "description": "Invoice #<?= htmlspecialchars($invoice['invoice_number']) ?>",
-                        "handler": function (response){
-                            fetch('/invoice/razorpay-success', {
-                                method: 'POST',
-                                headers: {'Content-Type': 'application/json'},
-                                body: JSON.stringify({
-                                    invoice_id: '<?= htmlspecialchars($invoice['invoice_id']) ?>',
-                                    razorpay_payment_id: response.razorpay_payment_id,
-                                    razorpay_order_id: response.razorpay_order_id,
-                                    razorpay_signature: response.razorpay_signature
-                                })
-                            }).then(res => res.json()).then(resp => {
-                                if (resp.success && resp.redirect) {
-                                    window.location.href = resp.redirect;
-                                } else {
-                                    alert('Payment update failed.');
-                                }
-                            });
-                        },
-                        "theme": {
-                            "color": "#3399cc"
-                        }
-                    };
-                    var rzp1 = new Razorpay(options);
-                    rzp1.open();
                     e.preventDefault();
+                    
+                    // First create order on server
+                    fetch('/create-razorpay-order', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            invoice_id: '<?= htmlspecialchars($invoice['invoice_id']) ?>',
+                            amount: <?= intval($invoice['total'] * 100) ?>,
+                            currency: '<?= htmlspecialchars($invoice['currency_code']) ?>',
+                            order_id: '<?= $orderId ?>'
+                        })
+                    }).then(res => res.json()).then(orderData => {
+                        if (orderData.success && orderData.razorpay_order_id) {
+                            var options = {
+                                "key": "<?= $keyId ?>",
+                                "amount": "<?= intval($invoice['total'] * 100) ?>",
+                                "currency": "<?= htmlspecialchars($invoice['currency_code']) ?>",
+                                "name": "Quantum IT Innovation",
+                                "order_id": orderData.razorpay_order_id,
+                                "description": "Invoice #<?= htmlspecialchars($invoice['invoice_number']) ?>",
+                                "handler": function (response){
+                                    fetch('/invoice/razorpay-success', {
+                                        method: 'POST',
+                                        headers: {'Content-Type': 'application/json'},
+                                        body: JSON.stringify({
+                                            invoice_id: '<?= htmlspecialchars($invoice['invoice_id']) ?>',
+                                            razorpay_payment_id: response.razorpay_payment_id,
+                                            razorpay_order_id: response.razorpay_order_id,
+                                            razorpay_signature: response.razorpay_signature
+                                        })
+                                    }).then(res => res.json()).then(resp => {
+                                        if (resp.success && resp.redirect) {
+                                            window.location.href = resp.redirect;
+                                        } else {
+                                            alert('Payment update failed: ' + (resp.message || 'Unknown error'));
+                                        }
+                                    }).catch(error => {
+                                        console.error('Payment update error:', error);
+                                        alert('Payment update failed. Please contact support.');
+                                    });
+                                },
+                                "prefill": {
+                                    "name": "<?= htmlspecialchars($invoice['customer_name'] ?? '') ?>",
+                                    "email": "<?= htmlspecialchars($invoice['email'] ?? '') ?>",
+                                    "contact": "<?= htmlspecialchars($invoice['phone'] ?? '') ?>"
+                                },
+                                "theme": {
+                                    "color": "#3399cc"
+                                }
+                            };
+                            var rzp1 = new Razorpay(options);
+                            rzp1.open();
+                        } else {
+                            alert('Failed to create order: ' + (orderData.message || 'Unknown error'));
+                        }
+                    }).catch(error => {
+                        console.error('Order creation error:', error);
+                        alert('Failed to create order. Please try again.');
+                    });
                 };
                 document.getElementById('razorpay-button-container').appendChild(button);
             }
